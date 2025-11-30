@@ -86,7 +86,7 @@ Engine_Ember : CroneEngine {
         // Load sample from file
         this.addCommand(\loadSample, "s", { arg msg;
             var path = msg[1].asString;
-            buffer.allocRead(path, completionMessage: {
+            buffer.allocRead(path, action: {
                 ("Loaded sample: " ++ path).postln;
             });
         });
