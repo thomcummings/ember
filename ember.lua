@@ -19,6 +19,7 @@ engine.name = "Ember"
 local script_dir = norns.state.path
 package.path = script_dir .. "lib/?.lua;" .. package.path
 
+local fileselect = require("fileselect")
 local EmberEngine = require("ember_engine")
 local Degradation = require("degradation")
 local Visual = require("visual")
