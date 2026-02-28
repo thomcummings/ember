@@ -8,7 +8,8 @@
 -- E1: page
 -- E2: select parameter
 -- E3: adjust value
--- K3: play/pause or context action
+-- K2: play/pause
+-- K3: context action (load, bypass, etc)
 -- K1+K3: reset head to start
 
 engine.name = "Ember"
@@ -651,6 +652,10 @@ function key(n, z)
       if ui.key_shift then
         -- K1+K2: Settings menu (future)
         print("ember: settings (not yet implemented)")
+      else
+        -- K2: universal play/pause
+        toggle_playback()
+        screen_dirty = true
       end
     else
       ui.key2_held = false
@@ -678,10 +683,6 @@ function key(n, z)
       quantize_mode = quantize_mode == "free" and "quantized" or "free"
       show_overlay("quantize", quantize_mode)
 
-    elseif page_name == "PLAYBACK" then
-      -- K3 on playback: play/pause
-      toggle_playback()
-
     elseif page_name == "FIDELITY" or page_name == "TEMPORAL" or
            page_name == "DROPOUT" or page_name == "SPECTRAL" or
            page_name == "SATURATION" or page_name == "NOISE" or
@@ -695,10 +696,6 @@ function key(n, z)
     elseif page_name == "HEALTH" then
       -- K3 on health: resurrect
       resurrect()
-
-    elseif page_name == "MASTER" then
-      -- K3 on master: start/stop
-      toggle_playback()
 
     elseif page_name == "PRESETS" then
       -- K3 on presets: load selected preset
