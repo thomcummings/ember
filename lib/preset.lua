@@ -5,8 +5,6 @@
 local Preset = {}
 Preset.__index = Preset
 
-local json = require("lib/json") -- norns includes a JSON lib, fallback to tab if not available
-
 -- Paths
 local FACTORY_PATH = _path.code .. "ember/presets/factory/"
 local USER_PATH = _path.code .. "ember/presets/user/"
