@@ -15,11 +15,15 @@
 
 engine.name = "Ember"
 
-local EmberEngine = require("lib/ember_engine")
-local Degradation = require("lib/degradation")
-local Visual = require("lib/visual")
-local UI_module = require("lib/ui")
-local Preset = require("lib/preset")
+-- add script's own directory to package.path so require finds lib/*
+local script_dir = norns.state.path
+package.path = script_dir .. "lib/?.lua;" .. package.path
+
+local EmberEngine = require("ember_engine")
+local Degradation = require("degradation")
+local Visual = require("visual")
+local UI_module = require("ui")
+local Preset = require("preset")
 
 -- State
 local deg = nil          -- degradation state
