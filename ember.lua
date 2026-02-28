@@ -8,10 +8,9 @@
 -- E1: page
 -- E2: select parameter
 -- E3: adjust value
--- K2: next page
--- K3: play/pause or context action
+-- K2: play/pause
+-- K3: context action (load, bypass, etc)
 -- K1+K3: reset head to start
--- K1+K2: settings
 
 engine.name = "Ember"
 
@@ -654,8 +653,8 @@ function key(n, z)
         -- K1+K2: Settings menu (future)
         print("ember: settings (not yet implemented)")
       else
-        -- K2: Next page
-        ui:next_page()
+        -- K2: universal play/pause
+        toggle_playback()
         screen_dirty = true
       end
     else
@@ -684,10 +683,6 @@ function key(n, z)
       quantize_mode = quantize_mode == "free" and "quantized" or "free"
       show_overlay("quantize", quantize_mode)
 
-    elseif page_name == "PLAYBACK" then
-      -- K3 on playback: play/pause
-      toggle_playback()
-
     elseif page_name == "FIDELITY" or page_name == "TEMPORAL" or
            page_name == "DROPOUT" or page_name == "SPECTRAL" or
            page_name == "SATURATION" or page_name == "NOISE" or
@@ -701,10 +696,6 @@ function key(n, z)
     elseif page_name == "HEALTH" then
       -- K3 on health: resurrect
       resurrect()
-
-    elseif page_name == "MASTER" then
-      -- K3 on master: start/stop
-      toggle_playback()
 
     elseif page_name == "PRESETS" then
       -- K3 on presets: load selected preset
@@ -741,25 +732,37 @@ function redraw()
     return
   end
 
-  -- Normal display: image + overlay
-  if visual_enabled then
+  -- IMAGE page: full-screen visual, minimal overlay
+  if ui:page_name() == "IMAGE" then
     vis:draw()
+    -- Subtle health in corner
+    screen.level(4)
+    screen.move(127, 7)
+    screen.text_right(string.format("%d", math.floor(deg.health)))
+    if playing then
+      screen.level(4)
+      screen.move(1, 7)
+      screen.text("~")
+    end
+    screen.update()
+    return
   end
 
-  -- Page header (subtle)
-  screen.level(2)
+  -- Parameter pages: standard norns black bg
+  -- Page header
+  screen.level(6)
   screen.move(1, 7)
   screen.text(ui:page().poetic or ui:page_name():lower())
 
   -- Health indicator (top right)
   local health_str = string.format("%d", math.floor(deg.health))
-  screen.level(deg.is_dead and 1 or 4)
+  screen.level(deg.is_dead and 2 or 8)
   screen.move(127, 7)
   screen.text_right(health_str)
 
   -- Playing indicator
   if playing then
-    screen.level(3)
+    screen.level(6)
     screen.move(64, 7)
     screen.text_center(deg.is_dead and "---" or "~")
   end
@@ -770,7 +773,7 @@ function redraw()
   -- Parameter overlay (on-change, bottom edge)
   if ui.overlay_text and ui.overlay_timer > 0 then
     local alpha = math.min(1, ui.overlay_timer / 0.5)
-    screen.level(math.floor(alpha * 10))
+    screen.level(math.floor(alpha * 15))
     screen.move(64, 62)
     screen.text_center(ui.overlay_text)
   end
@@ -877,11 +880,11 @@ function draw_page_content()
     screen.rect(0, bar_y, 128, 8)
     screen.stroke()
     local hw = math.floor(deg.health * 1.28)
-    screen.level(deg.health < deg.death_threshold and 2 or (deg.health < 30 and 5 or 10))
+    screen.level(deg.health < deg.death_threshold and 3 or (deg.health < 30 and 6 or 12))
     screen.rect(0, bar_y, hw, 8)
     screen.fill()
     -- Health value
-    screen.level(8)
+    screen.level(10)
     screen.move(64, bar_y + 18)
     screen.text_center(deg.is_dead and "dead" or string.format("memory: %d%%", math.floor(deg.health)))
 
@@ -927,7 +930,7 @@ end
 
 -- Draw a parameter row
 function draw_param_row(name, value, selected, y)
-  screen.level(selected and 12 or 4)
+  screen.level(selected and 15 or 4)
   screen.move(1, y)
   screen.text(name)
   screen.move(127, y)
@@ -938,12 +941,12 @@ end
 function draw_state_bar(state)
   local bar_y = 56
   local bar_w = math.floor(state * 128)
-  screen.level(2)
+  screen.level(3)
   screen.move(0, bar_y)
   screen.line(128, bar_y)
   screen.stroke()
   if bar_w > 0 then
-    screen.level(6)
+    screen.level(10)
     screen.move(0, bar_y)
     screen.line(bar_w, bar_y)
     screen.stroke()

@@ -7,6 +7,7 @@ UI.__index = UI
 
 -- Page definitions
 UI.pages = {
+  {name = "IMAGE",      poetic = "ember",      params = {}},
   {name = "SAMPLE",     poetic = "source",     params = {"slot", "file"}},
   {name = "LOOP",       poetic = "loop",       params = {"start", "length", "quantize"}},
   {name = "PLAYBACK",   poetic = "voice",      params = {"speed", "level", "pan", "width"}},
