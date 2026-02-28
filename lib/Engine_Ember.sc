@@ -70,20 +70,19 @@ Engine_Ember : CroneEngine {
             widthState = 0.0, widthTarget = 0.2,
             widthBypass = 0;
 
-            var snd, playhead, loopEnd, trig, phase;
-            var bits, srDiv, degraded;
+            var snd, processed, playhead, trig;
+            var bits, srDiv;
             var wowLfo, flutterLfo, pitchMod;
             var dropEnv, dropTrig, dropFreq, dropLen;
-            var cutoff, res, filtered, midFreq, midNotch;
-            var drive, driven, warmth;
+            var cutoff, res, filtered, midNotch;
+            var drive, driven, warmSnd;
             var mid, side, width;
             var env;
-            var loopSamples, loopEndSamples, startSamples;
+            var loopEndSamples, startSamples;
 
             // Calculate loop endpoints in samples
             startSamples = loopStart * BufSampleRate.kr(buf);
             loopEndSamples = (loopStart + loopLength) * BufSampleRate.kr(buf);
-            loopSamples = loopLength * BufSampleRate.kr(buf);
 
             // Playhead with loop detection
             playhead = Phasor.ar(0,
@@ -99,7 +98,7 @@ Engine_Ember : CroneEngine {
                 0.01
             );
 
-            // Send OSC on loop wrap (delayed slightly to avoid init trigger)
+            // Send OSC on loop wrap
             SendReply.ar(trig, '/ember/loop_wrap', [0], 0);
 
             // Read from buffer (mono)
@@ -109,109 +108,66 @@ Engine_Ember : CroneEngine {
             snd = snd ! 2;
 
             // ---- ENGINE 1: FIDELITY ----
-            degraded = if(fidelityBypass > 0, snd, {
-                var bitReduced, srReduced;
-                // Bit depth: 16 → 1 bit (exponential)
-                bits = LinExp.kr(1 - fidelityState, 0.001, 1.0, 1, 16).clip(1, 16);
-                // Sample rate divisor: 1 → 24 (logarithmic, influenced by correlation)
-                srDiv = LinExp.kr(fidelityState * (fidelityCorrelation.linlin(0, 1, 0.5, 1.0)),
-                    0.001, 1.0, 1, 24).clip(1, 24);
-
-                bitReduced = snd.round(2.pow(1 - bits));
-                srReduced = Latch.ar(bitReduced, Impulse.ar(SampleRate.ir / srDiv));
-                srReduced;
-            });
+            // Always compute; blend with bypass
+            bits = LinExp.kr(1 - fidelityState, 0.001, 1.0, 1, 16).clip(1, 16);
+            srDiv = LinExp.kr(fidelityState * fidelityCorrelation.linlin(0, 1, 0.5, 1.0),
+                0.001, 1.0, 1, 24).clip(1, 24);
+            processed = snd.round(2.pow(1 - bits));
+            processed = Latch.ar(processed, Impulse.ar(SampleRate.ir / srDiv));
+            snd = (processed * (1 - fidelityBypass)) + (snd * fidelityBypass);
 
             // ---- ENGINE 2: TEMPORAL ----
-            degraded = if(temporalBypass > 0, degraded, {
-                var wowed;
-                // Wow: slow pitch, depth grows with state
-                wowLfo = SinOsc.kr(LFNoise1.kr(0.1).range(0.5, 3.0));
-                wowLfo = wowLfo * (temporalState * wowDepthMax / 1200); // cents to ratio
-
-                // Flutter: fast noise, depth grows with state
-                flutterLfo = LFNoise2.kr(LFNoise1.kr(0.2).range(5, 15));
-                flutterLfo = flutterLfo * (temporalState * flutterDepthMax / 1200);
-
-                // Drift: applied from Lua as a fixed offset (accumulates over time)
-                pitchMod = 1.0 + wowLfo + flutterLfo + (driftVal / 1200 * driftEnabled);
-
-                // Apply pitch modulation via delay modulation
-                wowed = DelayC.ar(degraded,
-                    0.05,
-                    SinOsc.ar(0).range(0, 0).max(0.001) +
-                    ((1.0 - pitchMod).abs.clip(0, 0.04) * 0.05).max(0.0001)
-                );
-                // Simpler approach: PitchShift for wow/flutter
-                PitchShift.ar(degraded, 0.1, pitchMod.clip(0.5, 2.0), 0.01, 0.01);
-            });
+            wowLfo = SinOsc.kr(LFNoise1.kr(0.1).range(0.5, 3.0));
+            wowLfo = wowLfo * (temporalState * wowDepthMax / 1200);
+            flutterLfo = LFNoise2.kr(LFNoise1.kr(0.2).range(5, 15));
+            flutterLfo = flutterLfo * (temporalState * flutterDepthMax / 1200);
+            pitchMod = 1.0 + wowLfo + flutterLfo + (driftVal / 1200 * driftEnabled);
+            processed = PitchShift.ar(snd, 0.1, pitchMod.clip(0.5, 2.0), 0.01, 0.01);
+            snd = (processed * (1 - temporalBypass)) + (snd * temporalBypass);
 
             // ---- ENGINE 3: DROPOUT ----
-            degraded = if(dropoutBypass > 0, degraded, {
-                // Dropout frequency grows from 0 to max
-                dropFreq = dropoutState * dropoutMaxFreq;
-                // Dropout length grows from minimal to max
-                dropLen = dropoutState.linlin(0, 1, 0.001, dropoutMaxLength);
-                // Dust-based trigger scaled by frequency
-                dropTrig = Dust.kr(dropFreq);
-                // Envelope: 1 = playing, 0 = dropout
-                dropEnv = 1 - EnvGen.kr(Env.perc(0.001, dropLen, 1, -4), dropTrig);
-                degraded * dropEnv;
-            });
+            dropFreq = dropoutState * dropoutMaxFreq;
+            dropLen = dropoutState.linlin(0, 1, 0.001, dropoutMaxLength);
+            dropTrig = Dust.kr(dropFreq);
+            dropEnv = 1 - EnvGen.kr(Env.perc(0.001, dropLen, 1, -4), dropTrig);
+            processed = snd * dropEnv;
+            snd = (processed * (1 - dropoutBypass)) + (snd * dropoutBypass);
 
             // ---- ENGINE 4: SPECTRAL ----
-            degraded = if(spectralBypass > 0, degraded, {
-                // Cutoff drops exponentially from 20kHz to target
-                cutoff = LinExp.kr(1 - spectralState, 0.001, 1.0,
-                    spectralTarget.max(200), 20000).clip(200, 20000);
-                // Resonance develops over time
-                res = spectralState * spectralResonance;
-                filtered = RLPF.ar(degraded, cutoff, (1 - res).max(0.1));
-
-                // Optional mid-scoop (print-through)
-                filtered = if(midScoopEnabled > 0, {
-                    midFreq = 1000;
-                    midNotch = BPF.ar(filtered, midFreq, 0.5);
-                    filtered - (midNotch * midScoopState * 0.75); // up to -12dB
-                }, filtered);
-
-                filtered;
-            });
+            cutoff = LinExp.kr(1 - spectralState, 0.001, 1.0,
+                spectralTarget.max(200), 20000).clip(200, 20000);
+            res = spectralState * spectralResonance;
+            filtered = RLPF.ar(snd, cutoff, (1 - res).max(0.1));
+            // Mid-scoop: always compute, midScoopEnabled acts as multiplier
+            midNotch = BPF.ar(filtered, 1000, 0.5);
+            filtered = filtered - (midNotch * midScoopEnabled * midScoopState * 0.75);
+            snd = (filtered * (1 - spectralBypass)) + (snd * spectralBypass);
 
             // ---- ENGINE 5: SATURATION ----
-            degraded = if(saturationBypass > 0, degraded, {
-                // Drive grows from 0dB to max
-                drive = (saturationState * saturationMax).dbamp;
-                // Pre-emphasis: 100Hz warmth boost
-                warmth = BLowShelf.ar(degraded, 100, 1, saturationWarmth * saturationState * 6);
-                // Asymmetric soft clipping (tanh)
-                driven = (warmth * drive).tanh;
-                // Asymmetry: compress positive peaks more
-                driven = Select.ar(driven > 0, [
-                    driven,
-                    driven * (1 - (saturationAsymmetry * saturationState * 0.3))
-                ]);
-                // Compensate gain
-                driven = driven * drive.reciprocal.sqrt;
-                driven;
-            });
+            drive = (saturationState * saturationMax).dbamp;
+            warmSnd = BLowShelf.ar(snd, 100, 1, saturationWarmth * saturationState * 6);
+            driven = (warmSnd * drive).tanh;
+            // Asymmetry: compress positive peaks more
+            driven = Select.ar(driven > 0, [
+                driven,
+                driven * (1 - (saturationAsymmetry * saturationState * 0.3))
+            ]);
+            driven = driven * drive.reciprocal.sqrt;
+            snd = (driven * (1 - saturationBypass)) + (snd * saturationBypass);
 
             // ---- STEREO WIDTH ----
-            degraded = if(widthBypass > 0, degraded, {
-                // Mid-side processing
-                mid = (degraded[0] + degraded[1]) * 0.5;
-                side = (degraded[0] - degraded[1]) * 0.5;
-                // Width collapses toward target
-                width = 1.0 - (widthState * (1.0 - widthTarget));
-                [(mid + (side * width)), (mid - (side * width))];
-            });
+            mid = (snd[0] + snd[1]) * 0.5;
+            side = (snd[0] - snd[1]) * 0.5;
+            width = 1.0 - (widthState * (1.0 - widthTarget));
+            processed = [mid + (side * width), mid - (side * width)];
+            snd = (processed * (1 - widthBypass)) + (snd * widthBypass);
 
             // Envelope
             env = EnvGen.kr(Env.asr(0.01, 1, 0.05), gate, doneAction: 0);
 
             // Output: dry to main out + send to reverb bus
-            Out.ar(out, Pan2.ar(degraded.sum * 0.5, pan) * level * env);
-            Out.ar(verbOut, degraded * level * env);
+            Out.ar(out, Pan2.ar(snd.sum * 0.5, pan) * level * env);
+            Out.ar(verbOut, snd * level * env);
         }).add;
 
         // =============================================
