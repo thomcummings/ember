@@ -397,6 +397,7 @@ function Degradation:get_preset_data()
     mystery_range_max = self.mystery_range_max,
     -- Master
     master_speed = self.master_speed,
+    total_degradation_time = self.total_degradation_time,
   }
 end
 

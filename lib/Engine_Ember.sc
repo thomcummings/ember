@@ -257,12 +257,17 @@ Engine_Ember : CroneEngine {
         // =============================================
 
         // Sample loading (slot 0-3, path)
+        // Assigns buffer to voice and sends duration info after load completes
         this.addCommand(\loadSample, "is", { arg msg;
             var slot = msg[1].asInteger.clip(0, 3);
             var path = msg[2].asString;
             buffers[slot].free;
             buffers[slot] = Buffer.readChannel(server, path, channels: [0], action: { arg buf;
                 ("ember: loaded sample to slot " ++ slot ++ " (" ++ buf.numFrames ++ " frames)").postln;
+                // Assign loaded buffer to voice synth
+                synth.set(\buf, buf);
+                // Send duration back to Lua
+                oscAddr.sendMsg('/ember/buffer_info', slot, buf.duration);
             });
         });
 
