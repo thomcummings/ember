@@ -19,7 +19,7 @@ UI.pages = {
   {name = "NOISE",      poetic = "dust",       params = {"rate", "hiss", "crackle", "correlation"}},
   {name = "ROOM",       poetic = "space",      params = {"rate", "size", "wet", "damping"}},
   {name = "HEALTH",     poetic = "memory",     params = {"threshold", "death_mode"}},
-  {name = "MASTER",     poetic = "master",     params = {"speed", "mode", "mystery"}},
+  {name = "MASTER",     poetic = "master",     params = {"speed", "mode", "duration"}},
   {name = "PRESETS",    poetic = "presets",     params = {"selection"}},
 }
 

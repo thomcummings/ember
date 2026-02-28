@@ -266,7 +266,7 @@ function build_params()
   params:set_action("death_mode", function(v) deg.death_mode = ({"silence", "freeze", "collapse"})[v] end)
 
   -- Master
-  params:add_group("master", "MASTER", 4)
+  params:add_group("master", "MASTER", 5)
   params:add_control("master_speed", "speed mult", controlspec.new(0.1, 4.0, 'exp', 0.01, 1.0, 'x'))
   params:set_action("master_speed", function(v) deg.master_speed = v end)
   params:add_option("decay_mode", "decay mode", {"deterministic", "stochastic", "mystery"}, 1)
@@ -274,6 +274,8 @@ function build_params()
     deg.decay_mode = ({"deterministic", "stochastic", "mystery"})[v]
     deg.mystery_mode = (v == 3)
   end)
+  params:add_control("total_degradation_time", "duration", controlspec.new(60, 7200, 'exp', 30, 600, 's'))
+  params:set_action("total_degradation_time", function(v) deg.total_degradation_time = v end)
   params:add_control("mystery_range_min", "mystery min", controlspec.new(1, 60, 'lin', 1, 5, 'min'))
   params:set_action("mystery_range_min", function(v) deg.mystery_range_min = v end)
   params:add_control("mystery_range_max", "mystery max", controlspec.new(1, 60, 'lin', 1, 45, 'min'))
@@ -286,10 +288,10 @@ end
 function load_sample(slot, path)
   EmberEngine.load_sample(slot - 1, path) -- 0-indexed in SC
   sample_slots[slot] = path:match("^.+/(.+)$") or path
-  EmberEngine.assign_slot(slot - 1)
-  EmberEngine.get_buffer_duration(slot - 1)
+  -- assignSlot and buffer info are now handled in SC load callback
+  -- to avoid race condition with async buffer reads
   screen_dirty = true
-  print("ember: loaded " .. sample_slots[slot] .. " to slot " .. slot)
+  print("ember: loading " .. sample_slots[slot] .. " to slot " .. slot)
 end
 
 function on_buffer_info(args)
@@ -321,6 +323,14 @@ function toggle_playback()
     deg:init_mystery()
     -- Calculate step size
     deg:calculate_step(loop_length / speed)
+    -- Sync all playback params to engine before starting
+    engine.loopStart(loop_start)
+    engine.loopLength(loop_length)
+    engine.speed(speed)
+    engine.level(level)
+    engine.pan(pan)
+    -- Send pristine degradation state
+    EmberEngine.apply_degradation(deg:get_state())
     EmberEngine.start()
   else
     EmberEngine.stop()
@@ -520,10 +530,18 @@ function adjust_param(d)
       deg.mystery_mode = (idx == 3)
       params:set("decay_mode", idx, true)
       show_overlay("mode", deg.decay_mode)
-    elseif param_name == "mystery" then
-      -- Adjust mystery range
-      deg.mystery_range_max = util.clamp(deg.mystery_range_max + d, deg.mystery_range_min + 1, 60)
-      show_overlay("mystery", deg.mystery_range_min .. "-" .. deg.mystery_range_max .. "m")
+    elseif param_name == "duration" then
+      if deg.mystery_mode then
+        -- In mystery mode: adjust mystery range max
+        deg.mystery_range_max = util.clamp(deg.mystery_range_max + d, deg.mystery_range_min + 1, 60)
+        show_overlay("mystery", deg.mystery_range_min .. "-" .. deg.mystery_range_max .. "m")
+      else
+        -- In deterministic/stochastic: adjust total degradation time (minutes)
+        local dur_min = deg.total_degradation_time / 60
+        dur_min = util.clamp(dur_min + d * 0.5, 1, 120)
+        deg.total_degradation_time = dur_min * 60
+        show_overlay("duration", string.format("%.0fm", dur_min))
+      end
     end
 
   elseif page_name == "PRESETS" then
@@ -701,7 +719,21 @@ function key(n, z)
       -- K3 on presets: load selected preset
       if presets:count() > 0 then
         if presets:load(ui.preset_index, deg) then
-          -- Apply to engine
+          -- Stop playback during preset change
+          if playing then
+            playing = false
+            EmberEngine.stop()
+          end
+          -- Reset engine to pristine baseline before applying preset state
+          -- Explicitly set noise/room to safe values first
+          engine.hissLevel(-90)
+          engine.crackleRate(0)
+          engine.noiseBypass(0)
+          engine.roomSize(0.1)
+          engine.roomWet(0.1)
+          engine.roomDamping(0.1)
+          engine.roomBypass(0)
+          -- Now apply the full pristine degradation state
           EmberEngine.apply_degradation(deg:get_state())
           vis:reset_buffer()
           show_overlay("preset", presets:get(ui.preset_index).name)
@@ -890,11 +922,12 @@ function draw_page_content()
 
   elseif page_name == "MASTER" then
     draw_param_row("speed", string.format("%.2fx", deg.master_speed), ui.current_param == 1, y_start)
+    draw_param_row("mode", deg.mystery_mode and "mystery" or deg.decay_mode, ui.current_param == 2, y_start + 10)
     if deg.mystery_mode then
-      draw_param_row("mode", "mystery", ui.current_param == 2, y_start + 10)
       draw_param_row("range", deg.mystery_range_min .. "-" .. deg.mystery_range_max .. "m", ui.current_param == 3, y_start + 20)
     else
-      draw_param_row("mode", deg.decay_mode, ui.current_param == 2, y_start + 10)
+      local dur_min = deg.total_degradation_time / 60
+      draw_param_row("duration", string.format("%.0fm", dur_min), ui.current_param == 3, y_start + 20)
     end
     -- Loop count
     screen.level(3)
