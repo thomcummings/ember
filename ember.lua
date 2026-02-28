@@ -732,6 +732,23 @@ function redraw()
     return
   end
 
+  -- IMAGE page: full-screen visual, minimal overlay
+  if ui:page_name() == "IMAGE" then
+    vis:draw()
+    -- Subtle health in corner
+    screen.level(4)
+    screen.move(127, 7)
+    screen.text_right(string.format("%d", math.floor(deg.health)))
+    if playing then
+      screen.level(4)
+      screen.move(1, 7)
+      screen.text("~")
+    end
+    screen.update()
+    return
+  end
+
+  -- Parameter pages: standard norns black bg
   -- Page header
   screen.level(6)
   screen.move(1, 7)
