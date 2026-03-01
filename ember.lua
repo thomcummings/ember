@@ -266,7 +266,9 @@ function build_params()
   params:set_action("death_mode", function(v) deg.death_mode = ({"silence", "freeze", "collapse"})[v] end)
 
   -- Master
-  params:add_group("master", "MASTER", 5)
+  params:add_group("master", "MASTER", 6)
+  params:add_option("master_bypass", "master bypass", {"off", "on"}, 1)
+  params:set_action("master_bypass", function(v) engine.masterBypass(v == 2 and 1 or 0) end)
   params:add_control("master_speed", "speed mult", controlspec.new(0.1, 4.0, 'exp', 0.01, 1.0, 'x'))
   params:set_action("master_speed", function(v) deg.master_speed = v end)
   params:add_option("decay_mode", "decay mode", {"deterministic", "stochastic", "mystery"}, 1)
@@ -705,11 +707,14 @@ function key(n, z)
     elseif page_name == "FIDELITY" or page_name == "TEMPORAL" or
            page_name == "DROPOUT" or page_name == "SPECTRAL" or
            page_name == "SATURATION" or page_name == "NOISE" or
-           page_name == "ROOM" then
-      -- K3 on engine pages: bypass toggle
+           page_name == "ROOM" or page_name == "WIDTH" then
+      -- K3 on engine pages: bypass toggle (takes effect immediately)
       local eng = page_name:lower()
       local key = eng .. "_bypass"
       deg[key] = not deg[key]
+      -- Send to engine immediately (don't wait for loop wrap)
+      local engine_cmd = eng .. "Bypass"
+      engine[engine_cmd](deg[key] and 1 or 0)
       show_overlay("bypass", deg[key] and "on" or "off")
 
     elseif page_name == "HEALTH" then
