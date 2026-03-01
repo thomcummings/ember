@@ -249,7 +249,7 @@ Engine_Ember : CroneEngine {
             \out, context.out_b,
             \hissLevel, -90,
             \crackleRate, 0,
-            \gate, 1
+            \gate, 0
         ], target: context.xg, addAction: \addToTail);
 
         // =============================================
@@ -277,9 +277,15 @@ Engine_Ember : CroneEngine {
             synth.set(\buf, buffers[slot]);
         });
 
-        // Transport
-        this.addCommand(\start, "", { arg msg; synth.set(\gate, 1); });
-        this.addCommand(\stop, "", { arg msg; synth.set(\gate, 0); });
+        // Transport (voice + noise gated together; room stays open for tail)
+        this.addCommand(\start, "", { arg msg;
+            synth.set(\gate, 1);
+            noiseSynth.set(\gate, 1);
+        });
+        this.addCommand(\stop, "", { arg msg;
+            synth.set(\gate, 0);
+            noiseSynth.set(\gate, 0);
+        });
 
         // Playback params
         this.addCommand(\loopStart, "f", { arg msg; synth.set(\loopStart, msg[1]); });

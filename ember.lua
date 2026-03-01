@@ -288,8 +288,9 @@ end
 function load_sample(slot, path)
   EmberEngine.load_sample(slot - 1, path) -- 0-indexed in SC
   sample_slots[slot] = path:match("^.+/(.+)$") or path
-  -- assignSlot and buffer info are now handled in SC load callback
-  -- to avoid race condition with async buffer reads
+  -- Assign immediately so synth always points to a valid buffer
+  -- (SC callback will re-assign after read completes and send duration info)
+  EmberEngine.assign_slot(slot - 1)
   screen_dirty = true
   print("ember: loading " .. sample_slots[slot] .. " to slot " .. slot)
 end

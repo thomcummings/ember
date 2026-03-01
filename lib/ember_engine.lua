@@ -111,11 +111,12 @@ function EmberEngine.stop()
   engine.stop()
 end
 
--- Room tail: keep reverb alive after voice death
+-- Death tail: stop voice but keep room and noise ringing out
 function EmberEngine.begin_death_tail()
-  -- Stop voice but keep room ringing
+  -- Stop only the voice synth; noise + room stay open for tail
+  -- (stop() now closes both voice + noise, so we reopen noise)
   engine.stop()
-  -- Room gate stays open - tail will ring out naturally
+  engine.noiseGate(1)
 end
 
 -- Kill everything including reverb tail
