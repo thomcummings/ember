@@ -172,6 +172,8 @@ Engine_Ember : CroneEngine {
 
         // =============================================
         // ROOM/SPACE SYNTHDEF (separate for reverb tail after death)
+        // This is a SEND effect — only outputs wet reverb signal.
+        // Dry signal comes directly from the voice synth.
         // =============================================
         SynthDef(\emberRoom, {
             arg in, out,
@@ -182,15 +184,17 @@ Engine_Ember : CroneEngine {
 
             snd = In.ar(in, 2);
 
+            // Fully wet reverb (send effect, no dry passthrough)
             verb = FreeVerb2.ar(snd[0], snd[1],
-                mix: wet,
+                mix: 1,
                 room: roomSize,
                 damp: damping
             );
 
             env = EnvGen.kr(Env.asr(0.01, 1, 5.0), gate, doneAction: 0);
 
-            Out.ar(out, Select.ar(roomBypass, [verb, snd]) * env);
+            // wet controls reverb send level; bypass = silence
+            Out.ar(out, verb * wet * (1 - roomBypass) * env);
         }).add;
 
         // =============================================
