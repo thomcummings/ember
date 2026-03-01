@@ -42,6 +42,7 @@ Engine_Ember : CroneEngine {
             arg out, verbOut, buf = 0,
             gate = 0, level = 0.8, pan = 0,
             loopStart = 0, loopLength = 1, speed = 1.0,
+            masterBypass = 0,
             // Fidelity
             fidelityState = 0.0,
             fidelityCorrelation = 0.7,
@@ -70,7 +71,7 @@ Engine_Ember : CroneEngine {
             widthState = 0.0, widthTarget = 0.2,
             widthBypass = 0;
 
-            var snd, processed, playhead, trig;
+            var snd, processed, playhead, trig, raw;
             var bits, srDiv;
             var wowLfo, flutterLfo, pitchMod;
             var dropEnv, dropTrig, dropFreq, dropLen;
@@ -107,6 +108,9 @@ Engine_Ember : CroneEngine {
             // Make stereo for processing chain
             snd = snd ! 2;
 
+            // Save raw copy for master bypass (debug: hear clean audio)
+            raw = snd;
+
             // ---- ENGINE 1: FIDELITY ----
             // Always compute; blend with bypass
             bits = LinExp.kr(1 - fidelityState, 0.001, 1.0, 1, 16).clip(1, 16);
@@ -122,7 +126,8 @@ Engine_Ember : CroneEngine {
             flutterLfo = LFNoise2.kr(LFNoise1.kr(0.2).range(5, 15));
             flutterLfo = flutterLfo * (temporalState * flutterDepthMax / 1200);
             pitchMod = 1.0 + wowLfo + flutterLfo + (driftVal / 1200 * driftEnabled);
-            processed = PitchShift.ar(snd, 0.1, pitchMod.clip(0.5, 2.0), 0.01, 0.01);
+            processed = PitchShift.ar(snd, 0.1, pitchMod.clip(0.5, 2.0),
+                temporalState * 0.01, temporalState * 0.01);
             snd = (processed * (1 - temporalBypass)) + (snd * temporalBypass);
 
             // ---- ENGINE 3: DROPOUT ----
@@ -153,6 +158,8 @@ Engine_Ember : CroneEngine {
                 driven * (1 - (saturationAsymmetry * saturationState * 0.3))
             ]);
             driven = driven * drive.reciprocal.sqrt;
+            // Crossfade: at state=0 use clean signal (tanh is never transparent)
+            driven = (snd * (1 - saturationState)) + (driven * saturationState);
             snd = (driven * (1 - saturationBypass)) + (snd * saturationBypass);
 
             // ---- STEREO WIDTH ----
@@ -161,6 +168,9 @@ Engine_Ember : CroneEngine {
             width = 1.0 - (widthState * (1.0 - widthTarget));
             processed = [mid + (side * width), mid - (side * width)];
             snd = (processed * (1 - widthBypass)) + (snd * widthBypass);
+
+            // Master bypass: skip entire FX chain, hear raw buffer audio
+            snd = Select.ar(masterBypass, [snd, raw]);
 
             // Envelope
             env = EnvGen.kr(Env.asr(0.01, 1, 0.05), gate, doneAction: 0);
@@ -297,6 +307,9 @@ Engine_Ember : CroneEngine {
         this.addCommand(\speed, "f", { arg msg; synth.set(\speed, msg[1].clip(0.25, 2.0)); });
         this.addCommand(\level, "f", { arg msg; synth.set(\level, msg[1].clip(0.0, 1.0)); });
         this.addCommand(\pan, "f", { arg msg; synth.set(\pan, msg[1].clip(-1.0, 1.0)); });
+
+        // Master bypass (debug: raw buffer audio, no FX)
+        this.addCommand(\masterBypass, "i", { arg msg; synth.set(\masterBypass, msg[1]); });
 
         // Fidelity
         this.addCommand(\fidelityState, "f", { arg msg; synth.set(\fidelityState, msg[1].clip(0, 1)); });
